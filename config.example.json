@@ -1,0 +1,17 @@
+{
+  "accounts": [
+    {
+      "email1@example.com": "password1"
+    },
+    {
+      "email2@example.com": "password2"
+    },
+    {
+      "email3@example.com": "password3"
+    }
+  ],
+  "telegram": {
+    "bot_token": "your-bot-token-here",
+    "chat_id": "your-chat-id-here"
+  }
+} 

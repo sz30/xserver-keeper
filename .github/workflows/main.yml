@@ -1,21 +1,67 @@
 on:
   schedule:
-    - cron: 0 15 * * *
+    - cron: 0 8 * * *  # 每天上午8点执行VPS续费
+    - cron: 30 2 * * 0  # 每周日2点半执行repo保活
   push:
   workflow_dispatch:
 
 jobs:
-  job:
+  vps-renewal:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v4
       - run: sudo apt-get -qq update && sudo apt-get -yqq install --no-install-recommends ffmpeg fonts-noto-cjk
-      - run: yarn add puppeteer
+      - run: yarn add puppeteer node-fetch
       - run: node main.mjs
         env:
-          EMAIL: ${{ secrets.EMAIL }}
-          PASSWORD: ${{ secrets.PASSWORD }}
+          ACCOUNTS: ${{ secrets.ACCOUNTS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       - uses: actions/upload-artifact@v4
         with:
           path: recording.webm
+
+  repo-keepalive:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '30 2 * * 0'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v4
+      - run: yarn add node-fetch
+      - name: Setup Git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+      - name: Create keepalive file
+        run: |
+          echo "# Repo Keepalive" > keepalive.md
+          echo "Last updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> keepalive.md
+          echo "This file is automatically updated to keep the repository active." >> keepalive.md
+      - name: Commit and push changes
+        run: |
+          git add keepalive.md
+          git commit -m "🤖 Auto update: Keep repository active [skip ci]" || exit 0
+          git push
+      - name: Send Telegram notification
+        run: |
+          node -e "
+          import('node-fetch').then(({default: fetch}) => {
+            const botToken = process.env.TELEGRAM_BOT_TOKEN;
+            const chatId = process.env.TELEGRAM_CHAT_ID;
+            if (botToken && chatId) {
+              fetch(\`https://api.telegram.org/bot\${botToken}/sendMessage\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  chat_id: chatId,
+                  text: '🔄 <b>Repo保活完成</b>\\n\\n📅 时间: ' + new Date().toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}) + '\\n✅ 状态: 成功\\n\\n💡 仓库已更新，保持活跃状态',
+                  parse_mode: 'HTML'
+                })
+              });
+            }
+          });
+          "
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
